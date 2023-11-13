@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+import functools
+import time
+from pydantic import BaseModel, Field, computed_field
 from enum import Enum
 from datetime import datetime, timezone
 from nanoid import generate
@@ -124,6 +126,16 @@ class BotMessage(BaseModel):
     )
     payload: BotPayload = Field("Hello World", description="The message being send")
 
+    @computed_field
+    @property
+    def messageSize(self) -> int:
+        """Compute message size (only works for text messages for now)
+
+        Returns:
+            int: message size in characters
+        """        
+        return 0 if self.type != BotMessageTypes.text else len(self.payload.text)
+
 
 class Directions(Enum):
     """
@@ -191,3 +203,106 @@ class Event(BaseModel):
         json_encoders = {
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat(),
         }
+
+class BotMetrics(BaseModel):
+    """
+    Metrics object that captures bot event and inference time info
+
+    Attributes:
+        event (Event): Target bot event object.
+        startTime (float): Event start time (Unix time).
+        endTime (float): Event start time (Unix time).
+        success (bool): Indicates whether bot request was successful.
+    """    
+    event: Event = Field(
+        None, description="Target bot event object"
+    )
+    startTime: float = Field(
+        None, description="Event start time (Unix time)"
+    )
+    endTime: float = Field(
+        None, description="Event end time (Unix time)"
+    )
+    success: bool = Field(
+        True, description="Indicates whether bot request was successful"
+    )
+
+    @computed_field
+    @property
+    def responseTime(self) -> float:
+        """Get bot response time
+
+        Returns:
+            float: bot response time in seconds; 0 if either start or end time is missing
+        """        
+        if self.startTime is not None and self.endTime is not None:
+            return self.endTime - self.startTime
+        return 0
+
+    @computed_field
+    @property
+    def userInputSize(self) -> int:
+        """Get user input size
+
+        Returns:
+            int: user input size in characters
+        """        
+        return len(self.event.payload["text"])
+    
+    @computed_field
+    @property
+    def botOutputSize(self) -> int:
+        """Get bot output message size
+
+        Returns:
+            int: bot output message size in characters
+        """        
+        return functools.reduce(lambda s, r: s + r.messageSize, self.event.botReply, 0)
+    
+    @computed_field
+    @property
+    def userId(self) -> str:
+        """Get user ID associated with the Event
+
+        Returns:
+            str: user ID
+        """        
+        return self.event.userId
+
+    @computed_field
+    @property
+    def conversationId(self) -> str:
+        """Get conversation ID associated with the Event
+
+        Returns:
+            str: conversation ID
+        """        
+        return self.event.conversationId
+
+    @computed_field
+    @property
+    def inputMessageType(self) -> str:
+        """Get message type associated with the Event
+
+        Returns:
+            str: event message type
+        """        
+        return self.event.payload["type"]
+
+    def trackStart(self):
+        """Capture event start
+        """        
+        self.startTime = time.time()
+
+    def trackEnd(self):
+        """Capture event end
+        """        
+        self.endTime = time.time()
+
+    def captureEvent(self, event: Event):
+        """Associate bot event object with this metric instance
+
+        Args:
+            event (Event): bot Event object
+        """        
+        self.event = event

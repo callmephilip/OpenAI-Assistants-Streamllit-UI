@@ -23,6 +23,7 @@ import openai
 import os
 from dotenv import load_dotenv
 from util.logger import logger
+from util.metrics import TrackChatbotResponseMetrics
 
 load_dotenv()
 
@@ -406,21 +407,25 @@ if __name__ == "__main__":
         logger.debug("Processing user input...")
         with st.chat_message("assistant") as msg:
             with st.spinner("Thinking..."):
-                botEvent = getBotResponse(st.session_state.messages[-1]['content'])
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": botEvent}
-                )
-                for reply in botEvent.botReply:
-                    if reply.type == BotMessageTypes.button:
-                        logger.debug("Writing bot button message to chat...")
-                        makeButtons(reply.payload, makeUserMessage)
-                    if reply.type == BotMessageTypes.text:
-                        if reply.payload.useMarkdown:
-                            logger.debug("Writing bot markdown message to chat...")
-                            makeMarkdown(reply.payload)
-                        else:
-                            logger.debug("Writing bot text message to chat...")
-                            makeText(reply.payload)
+                with TrackChatbotResponseMetrics() as chatbotMetrics:
+                    chatbotMetrics.trackStart()
+                    botEvent = getBotResponse(st.session_state.messages[-1]['content'])
+                    chatbotMetrics.trackEnd()
+                    chatbotMetrics.captureEvent(botEvent)
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": botEvent}
+                    )
+                    for reply in botEvent.botReply:
+                        if reply.type == BotMessageTypes.button:
+                            logger.debug("Writing bot button message to chat...")
+                            makeButtons(reply.payload, makeUserMessage)
+                        if reply.type == BotMessageTypes.text:
+                            if reply.payload.useMarkdown:
+                                logger.debug("Writing bot markdown message to chat...")
+                                makeMarkdown(reply.payload)
+                            else:
+                                logger.debug("Writing bot text message to chat...")
+                                makeText(reply.payload)
     logger.debug("Waiting for user input...")
     prompt = st.chat_input(
         "Type your response here", key="userInput", on_submit=makeUserMessage,

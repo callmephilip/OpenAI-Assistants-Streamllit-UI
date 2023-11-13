@@ -14,6 +14,7 @@ nanoid = "^2.0.0"
 python-dotenv = "^1.0.0"
 black = "^23.10.1"
 pydantic = "^2.4.2"
+prettytable = "^3.9.0"
 
 [build-system]
 requires = ["poetry-core"]
